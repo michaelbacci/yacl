@@ -104,6 +104,7 @@ class filter_string_stream : public filter_abstract<T> {
 
     return t;
   }
+
 };
 
 template <class T>
@@ -119,10 +120,10 @@ class option: public option_methods, public filter_string_stream<T> {
 };
 
 template <class T, class F>
-class option_with_object_filter: option<T> {
+class option_with_object_filter: public option<T> {
 
  public:
-  option_with_object_filter() {}
+  option_with_object_filter(F f) : f(f) {}
 
   virtual T filter(const std::string &s) {
     return f(s);
@@ -130,16 +131,16 @@ class option_with_object_filter: option<T> {
 
  private:
   F f;
-  std::function<T(T)> custom_lambda_filter;
 };
 
 template <class T>
-class option_with_lambda_filter: option<T> {
- public:
-  option_with_lambda_filter(std::function<T(T)> f) : f(f) {}
+class option_with_object_filter<T, std::function<T(T)>>: public option<T> {
 
-  virtual T filter(const std::string &s) {
-    return f(s);
+ public:
+  option_with_object_filter(std::function<T(T)> f) : f(f) {}
+
+  virtual T filter(T v) {
+    return f(v);
   }
 
  private:
@@ -147,8 +148,40 @@ class option_with_lambda_filter: option<T> {
 };
 
 template <class T>
-class filter_stringstream {
+class option_with_lambda_filter: public option<T> {
+ public:
+  option_with_lambda_filter(std::function<T(T)> f) : f(f) {}
+
+  virtual T filter(const std::string &s) {
+    return f(option<T>::filter(s));
+  }
+
+ private:
+  std::function<T(T)> f;
 };
+
+template <class T>
+class filter_oneof : public filter_string_stream<T> {
+ public:
+  filter_oneof(const std::vector<T>& candidates) : candidates(candidates) {}
+
+  T operator()(const std::string &value) {
+    T filter_value = filter_string_stream<T>::filter(value);
+
+    if (std::find(candidates.begin(), candidates.end(), filter_value) == candidates.end())
+      throw std::domain_error("The input value [" + value + "] is not allowed");
+
+    return filter_value;
+  }
+
+ private:
+  std::vector<T> candidates;
+};
+
+template <class T, typename... Args>
+filter_oneof<T> oneof(T first, Args... args) {
+  return filter_oneof<T>(std::vector<T>({first, args...}));
+}
 
 class map {
 
@@ -162,10 +195,21 @@ class map {
   std::map<unsigned int, ptr_option> int_options;
   std::unordered_map<std::string, ptr_map> multi_options;
 
-  template <class T, class P>
-  void add(std::string long_name, std::string short_name, const T data=T(), P f=P()) {
-
+  void add(ptr_option op,
+           const std::string& long_name,
+           const std::string short_name,
+           const std::string help,
+           const option_abstract::option_type type) {
+    op->set_long_name(description);
+    op->set_short_name(short_name);
+    op->set_help(help);
+    op->set_type(type);
+    single_option = op;
   }
+
+//  template <class T, class P>
+//  void add(std::string long_name, std::string short_name, const T data=T(), P f=P()) {
+//  }
 
   void check_condition() const throw(std::domain_error) {
     if (description.empty())
@@ -181,28 +225,49 @@ class map {
   {}
 
   template <class T>
-  map& req(std::string short_desc, std::string desc) {
+  void req(std::string short_name, std::string help) {
+    check_condition();
+    add(std::make_shared<option<T>>(),
+        description,
+        short_name,
+        help,
+        option_abstract::REQUIRED);
+  }
+
+  template <class T>
+  void req(std::string short_name, std::string help, std::function<T(T)> filter) {
+    check_condition();
+    add(std::make_shared<option_with_lambda_filter<T>>(filter),
+        description,
+        short_name,
+        help,
+        option_abstract::REQUIRED);
+  }
+
+  template <class T, class F>
+//  typename std::enable_if<std::is_convertible<F, std::function<T(T)>>::value>::type
+//  typename std::enable_if<std::is_convertible<decltype(&F::operator()), std::function<T(T)>>::value>::type
+  void req(std::string short_name, std::string help, F filter=F()) {
+    check_condition();
+    add(std::make_shared<option_with_object_filter<T, F>>(filter),
+        description,
+        short_name,
+        help,
+        option_abstract::REQUIRED);
+  }
+
+  template <class T>
+  void opt(std::string short_name, std::string help, T val) {
+    check_condition();
+  }
+
+  template <class T>
+  void opt(std::string short_name, std::string help, T val, std::function<T(T)> f) {
     check_condition();
   }
 
   template <class T, class P>
-  map& req(std::string short_desc, std::string desc) {
-    check_condition();
-    T val = T();
-  }
-
-  template <class T>
-  map& opt(std::string short_desc, std::string help, T val) {
-    check_condition();
-  }
-
-  template <class T>
-  map& opt(std::string short_desc, std::string help, T val, std::function<T(T)> f) {
-    check_condition();
-  }
-
-  template <class T, class P>
-  map& opt(std::string short_desc, std::string help, T val, P f=P()) {
+  void opt(std::string short_name, std::string help, T val, P f=P()) {
     check_condition();
   }
 

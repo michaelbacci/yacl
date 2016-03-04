@@ -25,6 +25,38 @@ TEST_F(tests_yacl, map_simple_values) {
 //  ASSERT_EQ(map["port"].get<int>(), 80);
 }
 
+TEST_F(tests_yacl, map_with_custom_checks) {
+  struct one_or_two {
+    int operator()(const std::string &s) {
+      return (s == "1" || s == "2");
+    }
+
+  };
+
+  yacl::map map;
+
+  map["x"].req<int>("x", "x = {1,2,3,4,5}", yacl::oneof(1,2,3,4,5));
+  map["x"].req<int>("x", "x = {1,2}", one_or_two());
+
+  map["x"].req<std::string>("x", "x = {a,b}", yacl::oneof("a", "b"));
+  map["x"].req<std::string>("x", "x = {a,b}", [](const std::string& x) { return x; });
+
+  std::function<int(int)> f = [](int i) { return i; };
+  map["x"].req<int>("x", "x = {1,2}",  f);
+
+  map["x"].req<int>("x", "x = {1,2}", [&map](const std::string& x) {
+    if (x != "0" || x != "1")
+      throw std::domain_error(map["x"].help());
+    return 0;
+  });
+
+  //TODO
+  //map["x"].req<int>("x", "x = {1,2}", [](int i) { return i; });
+  //or
+  //map["x"].req<int,int>("x", "x = {1,2}", [](int i) { return i; });
+
+}
+
 TEST_F(tests_yacl, map_empty_assert) {
   yacl::map map;
 
