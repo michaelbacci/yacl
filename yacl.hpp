@@ -97,7 +97,7 @@ class filter_string_stream : public filter_abstract<T> {
 
     try {
       ss << s;
-      ss >> t;
+      //ss >> t;
     } catch(...) {
       throw std::runtime_error("String [" + s + "] can't be converted to the required type");
     }
@@ -285,11 +285,12 @@ class map {
   }
 
   int size() const {
-    return multi_options.size() +
-        std::accumulate(multi_options.begin(), multi_options.end(),0,
-                        [](const size_t p, const std::pair<std::string,size_t>& map) {
-                          return p+map.second;
-                        });
+    return multi_options.size();
+//    +
+//        std::accumulate(multi_options.begin(), multi_options.end(),0,
+//                        [](const size_t p, const std::pair<std::string,size_t>& map) {
+//                          return p+map.second;
+//                        });
   }
 
   std::string& help() const {
@@ -344,9 +345,89 @@ class map {
   }
 };
 
+// Utils
+
 std::ostream& operator<<(std::ostream&os, map&m) {
   os << m.to_string();
   return os;
 }
+
+
+
+struct convert {
+
+  typedef char** type_argv;
+
+  convert(int argc, type_argv argv)
+      : argc_(argc)
+      , argv_(argv)
+  {
+    if (argc < 1)
+      return;
+
+    s_argv_ = std::string(argv[0]);
+    for (auto&s : std::vector<std::string>(argv+1, argv + argc))
+      s_argv_ += " " + s;
+  }
+
+  convert(std::string s_argv)
+      : s_argv_(s_argv)
+  {
+    std::stringstream ss;
+    std::string s_tmp;
+    std::vector<std::string> v_tmp;
+
+    ss << s_argv_;
+    while (ss >> s_tmp) {
+      v_tmp.push_back(s_tmp);
+    }
+
+    argc_ = v_tmp.size();
+    if (argc_ == 0) {
+      argv_ = nullptr;
+      return;
+    }
+
+    argv_ = new char*[argc_];
+    char** it = argv_;
+
+    for (auto&s : v_tmp) {
+      char *i = new char[s.length() + 1];
+      std::copy(s.begin(), s.end(), i);
+      i[s.length()] = '\0';
+      *it++ = i;
+    }
+  }
+
+  convert& operator>>(std::string& s) {
+    s = std::string(s_argv_);
+    return *this;
+  }
+
+  convert& operator>>(int& argc) {
+    argc = argc_;
+    return *this;
+  }
+
+  convert& operator>>(type_argv& argv) {
+    argv = argv_;
+    return *this;
+  }
+
+ private:
+  int argc_;
+  type_argv argv_;
+  std::string s_argv_;
+};
+void to_argv(std::string v, int* argc, char*** argv) {
+  std::stringstream ss;
+  std::string tmp;
+  ss << v;
+
+  while (ss >> tmp) {
+
+  }
+}
+
 
 }
