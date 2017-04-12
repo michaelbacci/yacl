@@ -13,15 +13,39 @@ TEST_F(tests_yacl, map_simple_values) {
 
   map["host"].req<std::string>("h", "the remote host name");
   map["port"].opt<int>("p", "the remote host port", 80);
+  map["v"].opt<bool>("v", "the remote host port",false);
 
   ASSERT_EQ(map["host"].help(), "the remote host name");
-  ASSERT_EQ(map.size(), 2);
 
-  ASSERT_TRUE(map.parse("--host=http://github.com --port=23"));
+  ASSERT_TRUE(map.parse("--host=http://github.com -p 25 -v -d", true));
 
-//  ASSERT_EQ(map["host"].get(), "http://github.com");
-//  ASSERT_EQ(map["host"].get<std::string>(), "http://github.com");
-//  ASSERT_EQ(map["port"].get<int>(), 80);
+  ASSERT_EQ(map["host"].get(), "http://github.com");
+  ASSERT_EQ(map["port"].get(), "25");
+  ASSERT_EQ(map["port"].get<int>(), 25);
+  ASSERT_EQ(map["v"].get<bool>(), true);
+  ASSERT_EQ(map["host"].get<std::string>(), "http://github.com");
+}
+
+TEST_F(tests_yacl, map_chaine_of_flags) {
+  yacl::map map;
+
+  map["h"].req<std::string>("h", "the remote host name");
+  map["p"].opt<int>("p", "the remote host port", 80);
+  map["v"].opt<bool>("v", "the remote host port",false);
+  map["r"].opt<bool>("r", "enable report",true);
+  map["Z"].opt<bool>("z", "deep debug",false);
+  map["q"].opt<bool>("q", "quit if error",true);
+  map["T"].opt<bool>("T", "trace",false);
+
+  ASSERT_TRUE(map.parse("-qT -h http://github.com --port=25 -vrz", true));
+
+  ASSERT_EQ(map["host"].get(), "http://github.com");
+  ASSERT_EQ(map["port"].get<int>(), 25);
+  ASSERT_EQ(map["v"].get<bool>(), true);
+  ASSERT_EQ(map["r"].get<bool>(), false);
+  ASSERT_EQ(map["z"].get<bool>(), true);
+  ASSERT_EQ(map["q"].get<bool>(), false);
+  ASSERT_EQ(map["T"].get<bool>(), true);
 }
 
 TEST_F(tests_yacl, map_with_custom_checks) {
@@ -34,10 +58,10 @@ TEST_F(tests_yacl, map_with_custom_checks) {
 
   yacl::map map;
 
-  map["x"].req<int>("x", "x = {1,2,3,4,5}", yacl::oneof(1,2,3,4,5));
-  map["x"].req<int>("x", "x = {1,2}", one_or_two());
+  map["x"].req<int>("x", "x should be one of {1,2}", yacl::oneof<int>(1,2));
+  map["x"].req<int>("x", "x should be one of {1,2}", one_or_two());
 
-  map["x"].req<std::string>("x", "x = {a,b}", yacl::oneof("a", "b"));
+  map["x"].req<std::string>("x", "x = {a,b}", yacl::oneof<std::string>("a", "b"));
   map["x"].req<std::string>("x", "x = {a,b}", [](const std::string& x) { return x; });
 
   std::function<int(int)> f = [](int i) { return i; };
@@ -71,6 +95,11 @@ TEST_F(tests_yacl, argc_argv_converter) {
   std::string s_convesion;
   yacl::convert(argc, argv) >> s_convesion;
   ASSERT_EQ(s_convesion, s_argv);
+
+  std::size_t i = 0;
+  for (auto& it : yacl::convert(argc, argv) ) {
+    ASSERT_EQ(it, std::string(argv[i++]));
+  }
 }
 
 TEST_F(tests_yacl, simple_iterator) {

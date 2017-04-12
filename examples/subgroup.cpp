@@ -17,6 +17,7 @@ struct option_checks {
     }
 };
 
+
 struct check2 {
     int operator()(int i) {
         return 0;
