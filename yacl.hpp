@@ -16,6 +16,86 @@
 #include <type_traits>
 
 namespace yacl {
+
+
+namespace tdata {
+
+template<typename T>
+class TData;
+
+class BData {
+ public:
+
+  bool const is_setted() const noexcept {
+    return bdata_ != nullptr;
+  }
+
+  const std::type_info &type_info() const throw(std::bad_typeid) {
+    if (!is_setted())
+      throw std::bad_typeid();
+
+    return *info_;
+  }
+
+  template<typename T>
+  void set_data(const T &t) noexcept {
+    info_ = (std::type_info *) &typeid(T);
+    auto d = std::make_shared<TData<T>>();
+    d->set_data(t);
+    bdata_ = d;
+  }
+
+  template<typename T>
+  void set_data(T &&t) noexcept {
+    info_ = (std::type_info *) &typeid(T);
+    auto d = std::make_shared<TData<T>>();
+    d->set_data(t);
+    bdata_ = d;
+  }
+
+  template<typename T>
+  const T &get_data() const throw(std::logic_error, std::bad_cast) {
+    if (!is_setted()) {
+      throw std::logic_error("No data are available");
+    }
+
+    if ((std::type_info *) &typeid(T) != info_)
+      throw std::bad_cast();
+
+    return ((TData<T> *) (bdata_.get()))->get_data();
+  }
+
+  template<typename T>
+  const T &get_data_safe() noexcept {
+    if (!is_setted() || (std::type_info *) &typeid(T) != info_) {
+      T t;
+      auto d = std::make_shared<TData<T>>();
+      d->set_data(t);
+      bdata_ = d;
+    }
+
+    return ((TData<T> *) (bdata_.get()))->get_data();
+  }
+
+ protected:
+  std::shared_ptr<BData> bdata_;
+  std::type_info *info_;
+};
+
+template<typename T>
+class TData : public BData {
+ public:
+
+  void set_data(const T &t) noexcept { data_ = t; }
+  void set_data(T &&t) noexcept { data_ = std::move(t); }
+  const T &get_data() const noexcept { return data_; }
+
+ protected:
+  T data_;
+};
+}
+
+
 class map;
 class info;
 typedef struct {} all;
@@ -94,7 +174,6 @@ class convert {
 
 };
 
-
 template <class T>
 struct read {
   T operator()(T data) { return data; }
@@ -113,14 +192,69 @@ struct file_exist {
   T operator()(T data) { return true; }
 };
 
-class option_abstract {
+namespace filters {
+
+struct filter {
+  ~filter() {}
+  virtual std::string operator()(const std::string &v) = 0;
+};
+
+struct lower_case : public filter {
+  virtual std::string operator()(const std::string &v) {
+    std::string lower_str(v);
+    //std::transform(v.cbegin(), v.cend(), lower_str.begin(), std::tolower);
+    return lower_str;
+  }
+};
+
+}
+
+
+class OptionProgrammable {
+ public:
+  typedef std::function<void(const std::string &val)> reader;
+
+    template <typename T>
+    OptionProgrammable add_reader(T f) {
+      readers_.push_back(f);
+      return *this;
+    }
+
+    template <typename T, typename O, typename F>
+    OptionProgrammable& assign_to(O o, F f) {
+      assign_ = [o, f](const std::string &val) {
+        std::stringstream ss;
+        T data;
+        ss << val;
+        ss >> data;
+        if (o == nullptr)
+          throw std::runtime_error("assing_to() methond has null object");
+        (o->*f)(data);
+      };
+
+      return *this;
+    }
+
+//    template <typename F>
+//    XmlProgrammable& filter_with(F f) {
+//      filter_ = std::make_shared<F>();
+//      return *this;
+//    }
+
+ protected:
+  std::shared_ptr<filters::filter> filter_;
+  reader assign_;
+  std::vector<reader> readers_;
+};
+
+class OptionAbstract {
  public:
   enum option_type {
     OPTIONAL,
     REQUIRED
   };
 
-  ~option_abstract() {}
+  ~OptionAbstract() {}
 
   virtual void set_help(const std::string& s) = 0;
   virtual std::string& get_help() = 0;
@@ -135,7 +269,7 @@ class option_abstract {
   virtual option_type get_type() = 0;
 };
 
-class option_methods : public option_abstract {
+class OptionMethod : public OptionAbstract {
  protected:
   std::string help;
   std::string long_name;
@@ -158,15 +292,15 @@ class option_methods : public option_abstract {
 };
 
 template <class T>
-class filter_abstract {
+class FilterAbstract {
  public:
   virtual T filter(const std::string &s) = 0;
-  ~filter_abstract() {}
+  ~FilterAbstract() {}
 };
 
 
 template <class T>
-class filter_string_stream : public filter_abstract<T> {
+class FilterStringStream : public FilterAbstract<T> {
  public:
   virtual T filter(const std::string &s) {
     T t;
@@ -179,16 +313,17 @@ class filter_string_stream : public filter_abstract<T> {
 
 };
 
+
 template <class T>
-class option: public option_methods, public filter_string_stream<T> {
+class Option: public OptionMethod, public FilterStringStream<T> {
  protected:
   std::string data;
   T default_value;
   T cmdline_value;
  public:
 
-  option() {}
-  option(const std::string &data) : data(data){}
+  Option() {}
+  //Option(const std::string &data) : data(data){}
 
   void set_default_value(const T& v) { default_value = v;}
   T& get_default_value() { return default_value; }
@@ -200,7 +335,7 @@ class option: public option_methods, public filter_string_stream<T> {
 };
 
 template <class T, class F>
-class option_with_object_filter: public option<T> {
+class option_with_object_filter: public Option<T> {
 
  public:
   option_with_object_filter(F f) : f(f) {}
@@ -214,7 +349,7 @@ class option_with_object_filter: public option<T> {
 };
 
 template <class T>
-class option_with_object_filter<T, std::function<T(T)>>: public option<T> {
+class option_with_object_filter<T, std::function<T(T)>>: public Option<T> {
 
  public:
   option_with_object_filter(std::function<T(T)> f) : f(f) {}
@@ -228,12 +363,12 @@ class option_with_object_filter<T, std::function<T(T)>>: public option<T> {
 };
 
 template <class T>
-class option_with_lambda_filter: public option<T> {
+class option_with_lambda_filter: public Option<T> {
  public:
   option_with_lambda_filter(std::function<T(T)> f) : f(f) {}
 
   virtual T filter(const std::string &s) {
-    return f(option<T>::filter(s));
+    return f(Option<T>::filter(s));
   }
 
  private:
@@ -241,12 +376,12 @@ class option_with_lambda_filter: public option<T> {
 };
 
 template <class T>
-class filter_oneof : public filter_string_stream<T> {
+class filter_oneof : public FilterStringStream<T> {
  public:
   filter_oneof(const std::vector<T>& candidates) : candidates(candidates) {}
 
   T operator()(const std::string& value) {
-    T filter_value = filter_string_stream<T>::filter(value);
+    T filter_value = FilterStringStream<T>::filter(value);
 
     if (std::find(candidates.begin(), candidates.end(), filter_value) == candidates.end())
       throw std::domain_error("The input value [" + value + "] is not allowed");
@@ -272,7 +407,7 @@ class map {
   bool enabled;
 
   typedef std::shared_ptr<map> ptr_map;
-  typedef std::shared_ptr<option_abstract> ptr_option;
+  typedef std::shared_ptr<OptionAbstract> ptr_option;
 
   ptr_option single_option;
   std::unordered_map<unsigned int, ptr_option> int_options;
@@ -282,7 +417,7 @@ class map {
            const std::string& long_name,
            const std::string short_name,
            const std::string help,
-           const option_abstract::option_type type) {
+           const OptionAbstract::option_type type) {
     op->set_long_name(description);
     op->set_short_name(short_name);
     op->set_help(help);
@@ -305,17 +440,17 @@ class map {
   map(const std::string&s) :
       description (s),
       enabled(false),
-      single_option(new option_methods())
+      single_option(new OptionMethod())
   {}
 
   template <class T>
   void req(std::string short_name, std::string help) {
     check_condition();
-    add(std::make_shared<option<T>>(),
+    add(std::make_shared<Option<T>>(),
         description,
         short_name,
         help,
-        option_abstract::REQUIRED);
+        OptionAbstract::REQUIRED);
   }
 
   template <class T>
@@ -325,7 +460,7 @@ class map {
         description,
         short_name,
         help,
-        option_abstract::REQUIRED);
+        OptionAbstract::REQUIRED);
   }
 
   template <class T, class F>
@@ -337,20 +472,20 @@ class map {
         description,
         short_name,
         help,
-        option_abstract::REQUIRED);
+        OptionAbstract::REQUIRED);
   }
 
   template <class T>
   void opt(std::string short_name, std::string help, T val) {
     check_condition();
-    auto opt = std::make_shared<option<T>>();
+    auto opt = std::make_shared<Option<T>>();
     opt->set_default_value(val);
 
     add(std::move(opt),
         description,
         short_name,
         help,
-        option_abstract::OPTIONAL);
+        OptionAbstract::OPTIONAL);
   }
 
   template <class T>
@@ -364,26 +499,34 @@ class map {
   }
 
   template <class T>
-  T get() const {
+  T as() const {
     check_condition();
 
     //add check had parsed
-    option<T> *data = dynamic_cast<option<T>*>(single_option.get());
+    Option<T> *data = dynamic_cast<Option<T>*>(single_option.get());
     if (!data)
       throw std::domain_error("Conversion not allowed");
 
+    if (enabled) return data->get_cmdline_value();
+
+    if (data->get_type() == OptionAbstract::REQUIRED)
+      throw std::runtime_error("Required missing value");
+
+//    return data->filter(data->get_default_value());
+/*
     if (std::is_same<T, bool>::value)
       return data->get_cmdline_value();
 
     if (enabled) return data->filter(value);
 
-    if (data->get_type() == option_abstract::REQUIRED)
+    if (data->get_type() == OptionAbstract::REQUIRED)
       throw std::runtime_error("Required missing value");
 
     return data->get_default_value();
+*/
   }
 
-  std::string get() {
+  std::string as_string() {
     check_condition();
     return value;
   }
@@ -399,7 +542,7 @@ class map {
 
   std::string& help() const {
     check_condition();
-    option_methods *data = dynamic_cast<option_methods*>(single_option.get());
+    OptionMethod *data = dynamic_cast<OptionMethod*>(single_option.get());
     return single_option->get_help();
   }
 
@@ -492,7 +635,7 @@ class map {
         std::cout << "ANA [" << *it << "]" << std::endl;
           std::string opt_name;
           std::string opt_val;
-        //CASE '--option=<str>':
+        //CASE '--Option=<str>':
         {
           if (has_long_option(*it, opt_name, opt_val)) {
 
@@ -505,14 +648,14 @@ class map {
 
             multi_options[opt_name]->value = opt_val;
 //TODO:auto parsing and assign value!!!
-//            multi_options[opt_name]->single_option->se = opt_val;
+            //multi_options[opt_name]->single_option->se = opt_val;
             multi_options[opt_name]->enabled = true;
 
             continue;
           }
         }
 
-        //CASE '-s' single short option :
+        //CASE '-s' single short Option :
         {
           if (has_single_short_option(*it, opt_name)) {
 
@@ -524,15 +667,15 @@ class map {
                 opt_name = ik.second->description;
                 matched = true;
                 std::cout << "short matched ";
-                if (dynamic_cast<filter_abstract<bool>*>(ik.second->single_option.get())) {
+                if (dynamic_cast<FilterAbstract<bool>*>(ik.second->single_option.get())) {
                   ik.second->enabled = true;
                   std::cout << " --is bool";
                 } else {
                   std::cout << " --is value ";
                   ++it;
-                  if (it == c.end()) throw std::domain_error("The option [" + *it + "] require a value");
+                  if (it == c.end()) throw std::domain_error("The Option [" + *it + "] require a value");
                   if (!has_positional_option(*it, opt_val)) {
-                    throw std::domain_error("The option [" + *it + "] require a value");
+                    throw std::domain_error("The Option [" + *it + "] require a value");
                   }
                   break;
                 }
@@ -574,8 +717,5 @@ std::ostream& operator<<(std::ostream&os, map&m) {
   os << m.to_string();
   return os;
 }
-
-
-
 
 }

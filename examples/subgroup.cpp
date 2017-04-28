@@ -49,7 +49,7 @@ int main() {
 //    map["shoot"]["val2"].set<int, yacl::range(1,100)>("f", yacl::required, "desc...");
 //    map["shoot"]["func"].set<int, func>("f", yacl::required, "desc...");
 //
-//    map["atlas"]["k"].set<bool>("k", yacl::option, "desc...");
+//    map["atlas"]["k"].set<bool>("k", yacl::Option, "desc...");
 //
 //
 //    map["operation"].set<std::string, yacl::oneof_map({"shoot", "atlas"})>("op", yacl::required, "desc...");

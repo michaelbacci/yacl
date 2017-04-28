@@ -19,11 +19,11 @@ TEST_F(tests_yacl, map_simple_values) {
 
   ASSERT_TRUE(map.parse("--host=http://github.com -p 25 -v -d", true));
 
-  ASSERT_EQ(map["host"].get(), "http://github.com");
-  ASSERT_EQ(map["port"].get(), "25");
-  ASSERT_EQ(map["port"].get<int>(), 25);
-  ASSERT_EQ(map["v"].get<bool>(), true);
-  ASSERT_EQ(map["host"].get<std::string>(), "http://github.com");
+  ASSERT_EQ(map["host"].as_string(), "http://github.com");
+  ASSERT_EQ(map["port"].as_string(), "25");
+  ASSERT_EQ(map["port"].as<int>(), 25);
+  ASSERT_EQ(map["v"].as<bool>(), true);
+  ASSERT_EQ(map["host"].as<std::string>(), "http://github.com");
 }
 
 TEST_F(tests_yacl, map_chaine_of_flags) {
@@ -39,13 +39,13 @@ TEST_F(tests_yacl, map_chaine_of_flags) {
 
   ASSERT_TRUE(map.parse("-qT -h http://github.com --port=25 -vrz", true));
 
-  ASSERT_EQ(map["host"].get(), "http://github.com");
-  ASSERT_EQ(map["port"].get<int>(), 25);
-  ASSERT_EQ(map["v"].get<bool>(), true);
-  ASSERT_EQ(map["r"].get<bool>(), false);
-  ASSERT_EQ(map["z"].get<bool>(), true);
-  ASSERT_EQ(map["q"].get<bool>(), false);
-  ASSERT_EQ(map["T"].get<bool>(), true);
+  ASSERT_EQ(map["host"].as_string(), "http://github.com");
+  ASSERT_EQ(map["port"].as<int>(), 25);
+  ASSERT_EQ(map["v"].as<bool>(), true);
+  ASSERT_EQ(map["r"].as<bool>(), false);
+  ASSERT_EQ(map["z"].as<bool>(), true);
+  ASSERT_EQ(map["q"].as<bool>(), false);
+  ASSERT_EQ(map["T"].as<bool>(), true);
 }
 
 TEST_F(tests_yacl, map_with_custom_checks) {
@@ -115,8 +115,8 @@ TEST_F(tests_yacl, map_empty_assert) {
   yacl::map map;
 
   ASSERT_THROW(map.help(), std::domain_error);
-  ASSERT_THROW(map.get(), std::domain_error);
-  ASSERT_THROW(map.get<int>(), std::domain_error);
+  ASSERT_THROW(map.as_string(), std::domain_error);
+  ASSERT_THROW(map.as<int>(), std::domain_error);
   ASSERT_THROW(map.req<int>("x", "x"), std::domain_error);
   ASSERT_THROW(map.opt<int>("y", "y", 0), std::domain_error);
 }

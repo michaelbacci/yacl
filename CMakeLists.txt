@@ -36,10 +36,9 @@ endif()
 
 ##Examples and Tests are used in order to develop and testing the yacl.hpp file.
 ##So, if you want to use the yacl.hpp in your program/library you have just to
-##copy the yacl.hpp in your project's directory. Otherwise, if you want develop and improve
-##this tiny project, please add "-D BUILD_TEST=ON -D BUILD_TESTS = ON " as cmake argument.
-option(BUILD_EXAMPLES "Compile the examples ?" OFF)
-option(BUILD_TESTS "Compile the test ?" OFF)
+##copy the yacl.hpp in your project's directory.
+option(BUILD_EXAMPLES "Compile the examples ?" ON)
+option(BUILD_TESTS "Compile the test ?" ON)
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
